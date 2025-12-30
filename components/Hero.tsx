@@ -9,6 +9,8 @@ const Hero: React.FC = () => {
 
   // Inicializa o player assim que o componente monta
   useEffect(() => {
+    let muteCheckInterval: number;
+
     const checkVimeo = setInterval(() => {
       const Vimeo = (window as any).Vimeo;
       if (Vimeo && iframeRef.current) {
@@ -17,51 +19,67 @@ const Hero: React.FC = () => {
         // Tenta iniciar mudo para atrair atenção com o movimento (curiosidade)
         playerRef.current.setMuted(true);
         playerRef.current.play().catch(() => {
-          // Alguns navegadores barram até o play mudo sem interação
+          // Bloqueio comum de autoplay, ignoramos o erro
         });
 
-        // Monitora o estado de mudo periodicamente
-        const muteCheckInterval = setInterval(async () => {
+        // Monitora o estado de mudo periodicamente para atualizar o botão flutuante
+        muteCheckInterval = window.setInterval(async () => {
           if (playerRef.current) {
-            const muted = await playerRef.current.getMuted();
-            setIsMuted(muted);
+            try {
+              const muted = await playerRef.current.getMuted();
+              setIsMuted(muted);
+            } catch (e) {
+              // Silencioso
+            }
           }
         }, 1000);
 
         clearInterval(checkVimeo);
-        return () => clearInterval(muteCheckInterval);
       }
-    }, 100);
-    return () => clearInterval(checkVimeo);
+    }, 200);
+
+    return () => {
+      clearInterval(checkVimeo);
+      if (muteCheckInterval) clearInterval(muteCheckInterval);
+    };
   }, []);
 
   // Função ÚNICA para Iniciar Vídeo E Ativar Som
-  const handleAction = async () => {
+  const handleAction = () => {
+    // Remove o overlay IMEDIATAMENTE para evitar percepção de travamento
+    setIsOverlayVisible(false);
+
+    if (playerRef.current) {
+      // Executa as ações do player de forma assíncrona
+      (async () => {
+        try {
+          await playerRef.current.setMuted(false);
+          await playerRef.current.setVolume(1);
+          await playerRef.current.setCurrentTime(0); // Volta pro início para o usuário não perder nada
+          await playerRef.current.play();
+          setIsMuted(false);
+        } catch (error) {
+          console.warn('Falha ao desmutar automaticamente:', error);
+          // Fallback simples: tenta apenas dar play se o unmute falhar
+          if (playerRef.current) {
+            playerRef.current.play().catch(() => {});
+          }
+        }
+      })();
+    }
+  };
+
+  // Função específica para desmutar (usada pelo botão flutuante secundário)
+  const unmuteVideo = async (e: React.MouseEvent) => {
+    e.stopPropagation();
     if (playerRef.current) {
       try {
         await playerRef.current.setMuted(false);
         await playerRef.current.setVolume(1);
-        await playerRef.current.setCurrentTime(0); // Reinicia para o usuário ver do começo
-        await playerRef.current.play();
-        setIsOverlayVisible(false);
         setIsMuted(false);
-      } catch (error) {
-        console.error('Erro ao ativar vídeo com som:', error);
-        playerRef.current.play();
-        setIsOverlayVisible(false);
+      } catch (err) {
+        console.error(err);
       }
-    } else {
-      setIsOverlayVisible(false);
-    }
-  };
-
-  // Função específica para desmutar (usada pelo botão flutuante)
-  const unmuteVideo = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (playerRef.current) {
-      await playerRef.current.setMuted(false);
-      await playerRef.current.setVolume(1);
-      setIsMuted(false);
     }
   };
 
@@ -83,7 +101,7 @@ const Hero: React.FC = () => {
         {/* Container do Vídeo */}
         <div className="relative mb-10 shadow-2xl rounded-2xl overflow-hidden border-4 border-white bg-black group aspect-video">
           
-          {/* Botão de Ativar Som (Aparece apenas se estiver mudo e sem overlay) */}
+          {/* Botão de Ativar Som (Aparece apenas se estiver mudo e sem overlay inicial) */}
           {!isOverlayVisible && isMuted && (
             <button 
               onClick={unmuteVideo}
@@ -99,7 +117,7 @@ const Hero: React.FC = () => {
           {/* Overlay Inicial (Play + Unmute) */}
           {isOverlayVisible && (
             <div 
-              className="absolute inset-0 z-40 bg-black/60 flex flex-col items-center justify-center cursor-pointer transition-all duration-300 hover:bg-black/40 backdrop-blur-[2px]"
+              className="absolute inset-0 z-40 bg-black/70 flex flex-col items-center justify-center cursor-pointer transition-all duration-300 hover:bg-black/50 backdrop-blur-[2px]"
               onClick={handleAction}
             >
               <div className="relative">
@@ -112,7 +130,7 @@ const Hero: React.FC = () => {
                 </div>
               </div>
               
-              <div className="bg-black/80 px-8 py-4 rounded-2xl border border-white/20 text-center">
+              <div className="bg-black/80 px-8 py-4 rounded-2xl border border-white/20 text-center mx-4">
                 <h3 className="text-white font-black text-xl md:text-3xl uppercase tracking-tighter mb-1">
                   Clique para assistir com som
                 </h3>
