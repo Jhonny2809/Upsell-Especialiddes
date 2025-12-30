@@ -27,7 +27,7 @@ const PricingCTA: React.FC = () => {
           <p className="text-gray-400 line-through text-xl">De R$ 189,90</p>
           <div className="flex items-center justify-center gap-2">
             <span className="text-gray-900 text-2xl font-bold">Por apenas</span>
-            <span className="text-red-600 text-6xl md:text-7xl font-black">R$ 67,80</span>
+            <span className="text-red-600 text-6xl md:text-7xl font-black">R$ 97,80</span>
           </div>
           <p className="text-gray-500 text-sm mt-2 font-semibold">Ou em até 12x no cartão</p>
         </div>

@@ -3,21 +3,9 @@ import React, { useState, useEffect, useRef } from 'react';
 
 const Hero: React.FC = () => {
   const [isOverlayVisible, setIsOverlayVisible] = useState(true);
-  const [showUnmuteButton, setShowUnmuteButton] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const playerRef = useRef<any>(null);
-
-  // Impede o scroll enquanto o overlay estiver ativo
-  useEffect(() => {
-    if (isOverlayVisible) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
-    return () => {
-      document.body.style.overflow = 'unset';
-    };
-  }, [isOverlayVisible]);
 
   // Inicializa o player assim que o componente monta
   useEffect(() => {
@@ -25,80 +13,60 @@ const Hero: React.FC = () => {
       const Vimeo = (window as any).Vimeo;
       if (Vimeo && iframeRef.current) {
         playerRef.current = new Vimeo.Player(iframeRef.current);
+        
+        // Tenta iniciar mudo para atrair atenção com o movimento (curiosidade)
+        playerRef.current.setMuted(true);
+        playerRef.current.play().catch(() => {
+          // Alguns navegadores barram até o play mudo sem interação
+        });
+
+        // Monitora o estado de mudo periodicamente
+        const muteCheckInterval = setInterval(async () => {
+          if (playerRef.current) {
+            const muted = await playerRef.current.getMuted();
+            setIsMuted(muted);
+          }
+        }, 1000);
+
         clearInterval(checkVimeo);
+        return () => clearInterval(muteCheckInterval);
       }
     }, 100);
     return () => clearInterval(checkVimeo);
   }, []);
 
-  // Função para desmutar manualmente via botão flutuante
-  const handleUnmute = async (e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
+  // Função ÚNICA para Iniciar Vídeo E Ativar Som
+  const handleAction = async () => {
     if (playerRef.current) {
       try {
         await playerRef.current.setMuted(false);
         await playerRef.current.setVolume(1);
-        setShowUnmuteButton(false);
-      } catch (err) {
-        console.error('Falha ao desmutar:', err);
+        await playerRef.current.setCurrentTime(0); // Reinicia para o usuário ver do começo
+        await playerRef.current.play();
+        setIsOverlayVisible(false);
+        setIsMuted(false);
+      } catch (error) {
+        console.error('Erro ao ativar vídeo com som:', error);
+        playerRef.current.play();
+        setIsOverlayVisible(false);
       }
+    } else {
+      setIsOverlayVisible(false);
     }
   };
 
-  // Função para lidar com o clique no overlay inicial
-  const handleStartVideo = async () => {
-    setIsOverlayVisible(false);
-    
+  // Função específica para desmutar (usada pelo botão flutuante)
+  const unmuteVideo = async (e: React.MouseEvent) => {
+    e.stopPropagation();
     if (playerRef.current) {
-      try {
-        // Tenta iniciar com som
-        await playerRef.current.setMuted(false);
-        await playerRef.current.setVolume(1);
-        await playerRef.current.play();
-        
-        // Verifica se realmente desmutou (alguns navegadores são teimosos)
-        const muted = await playerRef.current.getMuted();
-        if (muted) {
-          setShowUnmuteButton(true);
-        }
-      } catch (error) {
-        console.error('Erro ao iniciar vídeo:', error);
-        playerRef.current.play();
-        setShowUnmuteButton(true); // Se falhou o play com som, mostra o botão de unmute
-      }
+      await playerRef.current.setMuted(false);
+      await playerRef.current.setVolume(1);
+      setIsMuted(false);
     }
   };
 
   return (
     <section className="bg-gray-50 pt-10 pb-16 px-4 relative">
-      {/* Overlay de Destaque Inicial */}
-      {isOverlayVisible && (
-        <div 
-          className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-4 cursor-pointer transition-opacity duration-500"
-          onClick={handleStartVideo}
-        >
-          <div className="text-center max-w-2xl animate-bounce mb-8">
-            <div className="bg-red-600 text-white p-6 rounded-full inline-block mb-4 shadow-[0_0_50px_rgba(220,38,38,0.5)]">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24" className="w-12 h-12">
-                <path d="M8 5v14l11-7z" />
-              </svg>
-            </div>
-            <h2 className="text-2xl md:text-4xl font-black text-white uppercase tracking-tighter">
-              Clique para reproduzir o vídeo
-            </h2>
-            <p className="text-gray-400 mt-2 font-semibold">
-              ⚠️ Som obrigatório: Entenda como garantir sua investidura.
-            </p>
-          </div>
-          
-          <div className="absolute bottom-1/4 animate-pulse">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-            </svg>
-          </div>
-        </div>
-      )}
-
       <div className="max-w-4xl mx-auto text-center relative z-10">
         <h2 className="text-red-600 font-bold uppercase tracking-widest text-sm mb-4">
           Parabéns pela sua compra! Mas temos um problema...
@@ -112,14 +80,14 @@ const Hero: React.FC = () => {
           Você já tem o conteúdo, mas você realmente tem <span className="font-bold text-gray-800">tempo para criar 71 aulas e 71 provas</span> do zero antes da próxima cerimônia?
         </p>
 
-        {/* Container do Vídeo com Botão de Unmute */}
-        <div className={`relative mb-10 shadow-2xl rounded-2xl overflow-hidden border-4 border-white bg-black transition-all duration-700 ${isOverlayVisible ? 'scale-95 blur-sm opacity-50' : 'scale-100 blur-0 opacity-100'}`}>
+        {/* Container do Vídeo */}
+        <div className="relative mb-10 shadow-2xl rounded-2xl overflow-hidden border-4 border-white bg-black group aspect-video">
           
-          {/* Botão de Ativar Som (Aparece se o vídeo estiver mudo após o play) */}
-          {showUnmuteButton && !isOverlayVisible && (
+          {/* Botão de Ativar Som (Aparece apenas se estiver mudo e sem overlay) */}
+          {!isOverlayVisible && isMuted && (
             <button 
-              onClick={handleUnmute}
-              className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-6 rounded-full shadow-[0_0_20px_rgba(220,38,38,0.6)] flex items-center gap-3 animate-pulse transition-transform hover:scale-105"
+              onClick={unmuteVideo}
+              className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-red-600 hover:bg-red-700 text-white font-black py-3 px-6 rounded-full shadow-[0_0_20px_rgba(220,38,38,0.7)] flex items-center gap-3 animate-pulse transition-transform hover:scale-105"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
@@ -128,10 +96,40 @@ const Hero: React.FC = () => {
             </button>
           )}
 
+          {/* Overlay Inicial (Play + Unmute) */}
+          {isOverlayVisible && (
+            <div 
+              className="absolute inset-0 z-40 bg-black/60 flex flex-col items-center justify-center cursor-pointer transition-all duration-300 hover:bg-black/40 backdrop-blur-[2px]"
+              onClick={handleAction}
+            >
+              <div className="relative">
+                {/* Efeito de Ondas de Pulso */}
+                <div className="absolute inset-0 bg-red-600 rounded-full animate-ping opacity-25"></div>
+                <div className="relative bg-red-600 text-white p-6 md:p-8 rounded-full mb-6 shadow-[0_0_50px_rgba(220,38,38,0.8)] group-hover:scale-110 transition-transform duration-300">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24" className="w-12 h-12 md:w-16 md:h-16 ml-1">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                </div>
+              </div>
+              
+              <div className="bg-black/80 px-8 py-4 rounded-2xl border border-white/20 text-center">
+                <h3 className="text-white font-black text-xl md:text-3xl uppercase tracking-tighter mb-1">
+                  Clique para assistir com som
+                </h3>
+                <p className="text-red-400 text-sm md:text-base font-bold flex items-center justify-center gap-2">
+                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.983 5.983 0 01-1.414 4.243 1 1 0 01-1.415-1.415A3.983 3.983 0 0013 10a3.983 3.983 0 00-1.172-2.828 1 1 0 010-1.415z" clipRule="evenodd" />
+                  </svg>
+                  PRECISAMOS QUE VOCÊ OUÇA ISTO!
+                </p>
+              </div>
+            </div>
+          )}
+
           <div style={{ padding: '56.25% 0 0 0', position: 'relative' }}>
             <iframe 
               ref={iframeRef}
-              src="https://player.vimeo.com/video/1149987439?title=0&byline=0&portrait=0&badge=0&autopause=0&player_id=0&app_id=58479" 
+              src="https://player.vimeo.com/video/1149987439?title=0&byline=0&portrait=0&badge=0&autopause=0&player_id=0&app_id=58479&autoplay=1&muted=1" 
               frameBorder="0" 
               allow="autoplay; fullscreen; picture-in-picture; clipboard-write; encrypted-media; web-share" 
               referrerPolicy="strict-origin-when-cross-origin" 
